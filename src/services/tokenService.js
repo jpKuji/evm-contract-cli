@@ -114,20 +114,45 @@ async function checkAndApproveToken(tokenAddress, spenderAddress, amount, wallet
             printInfo(`Approving ${approvalAmountFormatted} ${symbol} for ${spenderAddress}...`);
             
             // Send approval transaction
-            const approveTx = await tokenContract.approve(spenderAddress, approvalAmount);
-            printInfo(`Approval transaction sent: ${approveTx.hash}`);
-            
-            // Wait for approval confirmation
-            printInfo('Waiting for approval confirmation...');
-            const approvalReceipt = await approveTx.wait();
-            printSuccess(`Approval confirmed in block: ${approvalReceipt.blockNumber}`);
-            
-            // Verify new allowance
-            const newAllowance = await tokenContract.allowance(wallet.address, spenderAddress);
-            const newAllowanceFormatted = newAllowance === ethers.MaxUint256 ? 
-                'unlimited' : 
-                ethers.formatUnits(newAllowance, decimals);
-            printSuccess(`New allowance: ${newAllowanceFormatted} ${symbol}`);
+            try {
+                const approveTx = await tokenContract.approve(spenderAddress, approvalAmount);
+                printInfo(`Approval transaction sent: ${approveTx.hash}`);
+                
+                // Wait for approval confirmation
+                printInfo('Waiting for approval confirmation...');
+                const approvalReceipt = await approveTx.wait();
+                printSuccess(`Approval confirmed in block: ${approvalReceipt.blockNumber}`);
+                
+                // Verify new allowance
+                const newAllowance = await tokenContract.allowance(wallet.address, spenderAddress);
+                const newAllowanceFormatted = newAllowance === ethers.MaxUint256 ? 
+                    'unlimited' : 
+                    ethers.formatUnits(newAllowance, decimals);
+                printSuccess(`New allowance: ${newAllowanceFormatted} ${symbol}`);
+                
+                // Double-check that allowance is sufficient
+                if (newAllowance < amount) {
+                    throw new Error(`Approval completed but allowance (${newAllowanceFormatted}) is still insufficient for required amount (${amountFormatted})`);
+                }
+                
+            } catch (approvalError) {
+                printError(`Approval transaction failed: ${approvalError.message}`);
+                
+                if (approvalError.message.includes('500') || approvalError.message.includes('SERVER_ERROR')) {
+                    printWarning('Network error detected. This could be temporary.');
+                    printInfo('Suggestions:');
+                    printInfo('1. Wait a moment and try again');
+                    printInfo('2. Check if your RPC endpoint is working');
+                    printInfo('3. Try using a different RPC endpoint');
+                } else if (approvalError.message.includes('insufficient funds')) {
+                    printError('Insufficient ETH for gas fees. Please add more ETH to your wallet.');
+                } else if (approvalError.message.includes('nonce')) {
+                    printWarning('Nonce issue detected. Your wallet might have pending transactions.');
+                    printInfo('Wait for pending transactions to complete or restart your wallet.');
+                }
+                
+                throw new Error(`Token approval failed: ${approvalError.message}`);
+            }
         } else {
             printSuccess(`Sufficient allowance: ${allowanceFormatted} ${symbol} >= ${amountFormatted} ${symbol}`);
         }

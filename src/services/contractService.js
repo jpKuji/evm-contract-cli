@@ -35,13 +35,23 @@ async function executeContractFunction(contract, functionABI, parameters, wallet
     if (confirm.toLowerCase() !== 'y') {
         printInfo('Transaction cancelled');
         return null;
-    }
-    
-    // Check token allowances if this might involve ERC20 tokens
-    if (functionABI.stateMutability !== 'view' && functionABI.stateMutability !== 'pure') {
-        printInfo('Checking token allowances...');
-        await checkAndHandleAllowances(functionABI, parameters, wallet, contractAddress, provider);
-    }
+    }        // Check token allowances if this might involve ERC20 tokens
+        if (functionABI.stateMutability !== 'view' && functionABI.stateMutability !== 'pure') {
+            printInfo('Checking token allowances...');
+            try {
+                await checkAndHandleAllowances(functionABI, parameters, wallet, contractAddress, provider);
+                printSuccess('Token allowance check completed successfully.');
+            } catch (allowanceError) {
+                printError(`Token allowance check failed: ${allowanceError.message}`);
+                
+                const retryChoice = await question('Would you like to proceed anyway? (y/N): ');
+                if (retryChoice.toLowerCase() !== 'y') {
+                    printInfo('Transaction cancelled due to allowance issues.');
+                    return null;
+                }
+                printWarning('Proceeding without proper allowances. Transaction may fail.');
+            }
+        }
     
     return await executeTransaction(contract, functionABI, parameters, provider);
 }
